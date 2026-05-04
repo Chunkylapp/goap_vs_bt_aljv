@@ -4,7 +4,11 @@ public class ConsumerNode : BuildingNode
 {
     protected override void ProcessEconomy()
     {
-        if (inputStock > 0) inputStock--;
+        if (inputStock > 0)
+        {
+            inputStock--;
+            if (ScoreManager.Instance != null) ScoreManager.Instance.AddPoint();
+        }
     }
 
     protected override void UpdateUI()

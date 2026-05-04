@@ -1,6 +1,7 @@
+using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.AI;
-using TMPro;
 
 public class SmartTruckAI : MonoBehaviour
 {
@@ -17,13 +18,28 @@ public class SmartTruckAI : MonoBehaviour
     void Start()
     {
         myAgent = GetComponent<NavMeshAgent>();
-        myFuel = Random.Range(60f, 100f);
-        myAgent.speed = Random.Range(3.5f, 5.5f);
+        myFuel = Random.Range(70f, 100f);
+        myAgent.speed = Random.Range(4f, 5.5f);
 
-        myProducers = GameObject.FindGameObjectsWithTag("Producer");
-        myFactories = GameObject.FindGameObjectsWithTag("Factory");
-        myConsumers = GameObject.FindGameObjectsWithTag("Consumer");
-        myGasStations = GameObject.FindGameObjectsWithTag("GasStation");
+        myProducers = GetLocalObjectsWithTag("Producer");
+        myFactories = GetLocalObjectsWithTag("Factory");
+        myConsumers = GetLocalObjectsWithTag("Consumer");
+        myGasStations = GetLocalObjectsWithTag("GasStation");
+    }
+
+    GameObject[] GetLocalObjectsWithTag(string tag)
+    {
+        List<GameObject> foundList = new List<GameObject>();
+        Transform environmentRoot = transform.root;
+
+        foreach (Transform child in environmentRoot.GetComponentsInChildren<Transform>(true))
+        {
+            if (child.CompareTag(tag))
+            {
+                foundList.Add(child.gameObject);
+            }
+        }
+        return foundList.ToArray();
     }
 
     void Update()
@@ -103,30 +119,37 @@ public class SmartTruckAI : MonoBehaviour
 
     int GetNodeScore(Transform target, bool isDroppingOff)
     {
-        if (target == null) return -1;
+        if (target == null)
+            return -1;
         BuildingNode node = target.GetComponent<BuildingNode>();
+
         return node != null ? node.GetUtilityScore(isDroppingOff) : -1;
     }
 
     Transform GetBestTarget(GameObject[] targets, bool isBuilding, bool isDroppingOff)
     {
-        if (targets == null || targets.Length == 0) return null;
+        if (targets == null || targets.Length == 0)
+            return null;
+
         Transform bestTarget = null;
         float bestScore = -Mathf.Infinity;
         Vector3 currentPosition = transform.position;
 
         foreach (GameObject potentialTarget in targets)
         {
-            if (potentialTarget == null) continue;
+            if (potentialTarget == null)
+                continue;
             float distance = Vector3.Distance(currentPosition, potentialTarget.transform.position);
             float score = -distance;
 
             if (isBuilding)
             {
                 BuildingNode node = potentialTarget.GetComponent<BuildingNode>();
-                if (node == null) continue;
+                if (node == null)
+                    continue;
                 int utility = node.GetUtilityScore(isDroppingOff);
-                if (utility <= 0) continue;
+                if (utility <= 0)
+                    continue;
                 score += (utility * 15f) + Random.Range(-10f, 20f);
             }
 
@@ -140,7 +163,8 @@ public class SmartTruckAI : MonoBehaviour
         if (Vector3.Distance(transform.position, target.position) < 2.5f)
         {
             BuildingNode node = target.GetComponent<BuildingNode>();
-            if (node != null && node.TryDropOff()) myCargo = nextCargo;
+            if (node != null && node.TryDropOff())
+                myCargo = nextCargo;
         }
     }
 
@@ -149,14 +173,19 @@ public class SmartTruckAI : MonoBehaviour
         if (Vector3.Distance(transform.position, target.position) < 2.5f)
         {
             BuildingNode node = target.GetComponent<BuildingNode>();
-            if (node != null && node.TryPickUp()) myCargo = nextCargo;
+            if (node != null && node.TryPickUp())
+                myCargo = nextCargo;
         }
     }
 
     void SetState(Transform target, string stateName)
     {
-        if (target == null) return;
-        myAgent.SetDestination(target.position);
-        if (myState != stateName) myState = stateName;
+        if (target == null)
+            return;
+
+        myAgent.SetDestination(target.position)
+
+        if (myState != stateName)
+            myState = stateName;
     }
 }
