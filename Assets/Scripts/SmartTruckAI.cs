@@ -183,7 +183,7 @@ public class SmartTruckAI : MonoBehaviour
         if (target == null)
             return;
 
-        myAgent.SetDestination(target.position)
+        myAgent.SetDestination(target.position);
 
         if (myState != stateName)
             myState = stateName;
