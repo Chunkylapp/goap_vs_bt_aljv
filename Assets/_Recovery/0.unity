@@ -18157,8 +18157,8 @@ MonoBehaviour:
   rootGOAP: {fileID: 0}
   btBuildings: []
   goapBuildings: []
-  spawnRangeX: 30
-  spawnRangeZ: 30
+  isAutoRunning: 1
+  roundDuration: 100
 --- !u!1 &1827320340
 GameObject:
   m_ObjectHideFlags: 0

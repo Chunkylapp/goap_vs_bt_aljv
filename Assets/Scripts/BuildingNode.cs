@@ -3,6 +3,7 @@ using TMPro;
 
 public abstract class BuildingNode : MonoBehaviour
 {
+    public Team myTeam;
     public TextMeshPro myFloatingText;
     public string myBuildingName = "Cladire";
 

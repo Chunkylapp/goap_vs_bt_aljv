@@ -7,7 +7,7 @@ public class ConsumerNode : BuildingNode
         if (inputStock > 0)
         {
             inputStock--;
-            if (ScoreManager.Instance != null) ScoreManager.Instance.AddPoint();
+            if (ScoreManager.Instance != null) ScoreManager.Instance.AddPoint(myTeam);
         }
     }
 

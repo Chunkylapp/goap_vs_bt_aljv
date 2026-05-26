@@ -5,9 +5,11 @@ using UnityEngine.AI;
 
 public class SmartTruckAI : MonoBehaviour
 {
+    public Team myTeam;
     public float myFuel;
     public string myCargo = "None";
     public TextMeshPro myFloatingText;
+    public bool isDead = false;
 
     private NavMeshAgent myAgent;
     private string myState = "";
@@ -30,22 +32,54 @@ public class SmartTruckAI : MonoBehaviour
     GameObject[] GetLocalObjectsWithTag(string tag)
     {
         List<GameObject> foundList = new List<GameObject>();
-        Transform environmentRoot = transform.root;
+        GameObject[] allWithTag = GameObject.FindGameObjectsWithTag(tag);
 
-        foreach (Transform child in environmentRoot.GetComponentsInChildren<Transform>(true))
+        foreach (GameObject obj in allWithTag)
         {
-            if (child.CompareTag(tag))
+            BuildingNode node = obj.GetComponent<BuildingNode>();
+            if (node != null)
             {
-                foundList.Add(child.gameObject);
+                if (node.myTeam == myTeam) foundList.Add(obj);
+                continue;
+            }
+
+            TeamMember tm = obj.GetComponent<TeamMember>();
+            if (tm != null)
+            {
+                if (tm.myTeam == myTeam) foundList.Add(obj);
+                continue;
+            }
+
+            Transform parent = obj.transform.parent;
+            if (parent != null)
+            {
+                BuildingNode pNode = parent.GetComponent<BuildingNode>();
+                TeamMember pTm = parent.GetComponent<TeamMember>();
+                if ((pNode != null && pNode.myTeam == myTeam) || (pTm != null && pTm.myTeam == myTeam))
+                {
+                    foundList.Add(obj);
+                }
             }
         }
         return foundList.ToArray();
+    }
+
+    bool IsTargetValid(Transform target, bool isDroppingOff)
+    {
+        if (target == null) return false;
+        BuildingNode node = target.GetComponent<BuildingNode>();
+        return node != null && node.GetUtilityScore(isDroppingOff) > 0;
     }
 
     void Update()
     {
         if (myFuel <= 0f)
         {
+            if (!isDead)
+            {
+                isDead = true;
+                if (CompetitionManager.Instance != null) CompetitionManager.Instance.btDeaths++;
+            }
             myFuel = 0f;
             myAgent.isStopped = true;
             SetState(transform, "Out of gas");
@@ -53,20 +87,44 @@ public class SmartTruckAI : MonoBehaviour
         }
         else
         {
-            myFuel -= Time.deltaTime * 3f;
+            float fuelConsumed = Time.deltaTime * 3f;
+            myFuel -= fuelConsumed;
+            if (CompetitionManager.Instance != null) CompetitionManager.Instance.btFuelBurnt += fuelConsumed;
+
+            if (myCurrentTarget == null)
+            {
+                if (CompetitionManager.Instance != null) CompetitionManager.Instance.btIdleTime += Time.deltaTime;
+            }
 
             if (myFuel < 30f)
             {
-                myCurrentTarget = GetBestTarget(myGasStations, false, false);
+                if (myCurrentTarget == null || !myCurrentTarget.CompareTag("GasStation"))
+                {
+                    myCurrentTarget = GetBestTarget(myGasStations, false, false);
+                }
+
                 if (myCurrentTarget != null)
                 {
                     SetState(myCurrentTarget, "Rushing to the gas station");
-                    if (Vector3.Distance(transform.position, myCurrentTarget.position) < 2.5f) myFuel = 100f;
+                    if (Vector3.Distance(transform.position, myCurrentTarget.position) < 3.5f)
+                    {
+                        myFuel = 100f;
+                        myCurrentTarget = null;
+                    }
                 }
             }
             else if (myCargo == "Product")
             {
-                myCurrentTarget = GetBestTarget(myConsumers, true, true);
+                if (myCurrentTarget != null && myCurrentTarget.CompareTag("Consumer") && !IsTargetValid(myCurrentTarget, true))
+                {
+                    if (CompetitionManager.Instance != null) CompetitionManager.Instance.btAborts++;
+                }
+
+                if (myCurrentTarget == null || !myCurrentTarget.CompareTag("Consumer") || !IsTargetValid(myCurrentTarget, true))
+                {
+                    myCurrentTarget = GetBestTarget(myConsumers, true, true);
+                }
+
                 if (myCurrentTarget != null)
                 {
                     SetState(myCurrentTarget, "Taking to consumer");
@@ -75,7 +133,16 @@ public class SmartTruckAI : MonoBehaviour
             }
             else if (myCargo == "Raw")
             {
-                myCurrentTarget = GetBestTarget(myFactories, true, true);
+                if (myCurrentTarget != null && myCurrentTarget.CompareTag("Factory") && !IsTargetValid(myCurrentTarget, true))
+                {
+                    if (CompetitionManager.Instance != null) CompetitionManager.Instance.btAborts++;
+                }
+
+                if (myCurrentTarget == null || !myCurrentTarget.CompareTag("Factory") || !IsTargetValid(myCurrentTarget, true))
+                {
+                    myCurrentTarget = GetBestTarget(myFactories, true, true);
+                }
+
                 if (myCurrentTarget != null)
                 {
                     SetState(myCurrentTarget, "Taking to factory");
@@ -84,22 +151,40 @@ public class SmartTruckAI : MonoBehaviour
             }
             else
             {
-                Transform bestFactory = GetBestTarget(myFactories, true, false);
-                Transform bestProducer = GetBestTarget(myProducers, true, false);
+                bool isValidFactory = myCurrentTarget != null && myCurrentTarget.CompareTag("Factory") && IsTargetValid(myCurrentTarget, false);
+                bool isValidProducer = myCurrentTarget != null && myCurrentTarget.CompareTag("Producer") && IsTargetValid(myCurrentTarget, false);
 
-                int factoryScore = GetNodeScore(bestFactory, false);
-                int producerScore = GetNodeScore(bestProducer, false);
-
-                if (factoryScore > producerScore && factoryScore > 0)
+                if (myCurrentTarget != null && (myCurrentTarget.CompareTag("Factory") || myCurrentTarget.CompareTag("Producer")) && !isValidFactory && !isValidProducer)
                 {
-                    myCurrentTarget = bestFactory;
-                    SetState(myCurrentTarget, "Preiau product");
-                    TryPickUp(myCurrentTarget, "Product");
+                    if (CompetitionManager.Instance != null) CompetitionManager.Instance.btAborts++;
                 }
-                else
+
+                if (!isValidFactory && !isValidProducer)
                 {
-                    myCurrentTarget = bestProducer;
-                    if (myCurrentTarget != null)
+                    Transform bestFactory = GetBestTarget(myFactories, true, false);
+                    Transform bestProducer = GetBestTarget(myProducers, true, false);
+
+                    int factoryScore = GetNodeScore(bestFactory, false) * 2;
+                    int producerScore = GetNodeScore(bestProducer, false);
+
+                    if (factoryScore >= producerScore && factoryScore > 0)
+                    {
+                        myCurrentTarget = bestFactory;
+                    }
+                    else
+                    {
+                        myCurrentTarget = bestProducer;
+                    }
+                }
+
+                if (myCurrentTarget != null)
+                {
+                    if (myCurrentTarget.CompareTag("Factory"))
+                    {
+                        SetState(myCurrentTarget, "Picking up product");
+                        TryPickUp(myCurrentTarget, "Product");
+                    }
+                    else
                     {
                         SetState(myCurrentTarget, "Picking raw");
                         TryPickUp(myCurrentTarget, "Raw");
@@ -160,21 +245,27 @@ public class SmartTruckAI : MonoBehaviour
 
     void TryDropOff(Transform target, string nextCargo)
     {
-        if (Vector3.Distance(transform.position, target.position) < 2.5f)
+        if (Vector3.Distance(transform.position, target.position) < 3.5f)
         {
             BuildingNode node = target.GetComponent<BuildingNode>();
             if (node != null && node.TryDropOff())
+            {
                 myCargo = nextCargo;
+                myCurrentTarget = null;
+            }
         }
     }
 
     void TryPickUp(Transform target, string nextCargo)
     {
-        if (Vector3.Distance(transform.position, target.position) < 2.5f)
+        if (Vector3.Distance(transform.position, target.position) < 3.5f)
         {
             BuildingNode node = target.GetComponent<BuildingNode>();
             if (node != null && node.TryPickUp())
+            {
                 myCargo = nextCargo;
+                myCurrentTarget = null;
+            }
         }
     }
 
@@ -183,7 +274,10 @@ public class SmartTruckAI : MonoBehaviour
         if (target == null)
             return;
 
-        myAgent.SetDestination(target.position);
+        if (myAgent != null && myAgent.isActiveAndEnabled && myAgent.isOnNavMesh)
+        {
+            myAgent.SetDestination(target.position);
+        }
 
         if (myState != stateName)
             myState = stateName;
